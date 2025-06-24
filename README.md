@@ -69,7 +69,7 @@ LawnMayhem 3D/
 
 ## ✨ Créditos
 
-Desarrollado por [Tu nombre o equipo].
+Desarrollado por Johannes Carofilis Veliz
 
 Inspirado en la estética low-poly y los minijuegos arcade, con un toque de humor absurdo y caos de jardín.
 
