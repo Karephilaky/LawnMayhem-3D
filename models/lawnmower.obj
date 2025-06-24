@@ -1,0 +1,42 @@
+# Podadora low poly
+o Podadora
+
+# Base (caja rectangular)
+v -0.5 0.0 -0.3
+v 0.5 0.0 -0.3
+v 0.5 0.2 -0.3
+v -0.5 0.2 -0.3
+v -0.5 0.0 0.3
+v 0.5 0.0 0.3
+v 0.5 0.2 0.3
+v -0.5 0.2 0.3
+
+# Manillar (triángulo simple hacia arriba)
+v -0.1 0.2 0.3
+v 0.1 0.2 0.3
+v 0.0 0.8 0.5
+
+# Ruedas (solo representadas como cubos bajos)
+v -0.5 0.0 -0.35
+v -0.3 0.0 -0.35
+v -0.3 0.2 -0.35
+v -0.5 0.2 -0.35
+v 0.3 0.0 -0.35
+v 0.5 0.0 -0.35
+v 0.5 0.2 -0.35
+v 0.3 0.2 -0.35
+
+# Caras base
+f 1 2 3 4
+f 5 6 7 8
+f 1 5 8 4
+f 2 6 7 3
+f 1 2 6 5
+f 4 3 7 8
+
+# Caras manillar
+f 9 10 11
+
+# Caras ruedas
+f 12 13 14 15
+f 16 17 18 19
