@@ -205,6 +205,49 @@ def draw_ground_textured(tex_id, width=6.0, depth=80.0, repeats_x=6.0, repeats_z
     glDisable(GL_TEXTURE_2D)
 
 # -----------------------
+# Power-ups
+# -----------------------
+
+class PowerUp:
+    COLORS = {"heart": (1.0, 0.2, 0.3), "shield": (0.2, 0.7, 1.0)}
+
+    def __init__(self, kind, lane, z):
+        self.kind = kind
+        self.x = lane
+        self.z = z
+
+    def update(self, speed):
+        self.z += speed
+
+    def draw(self):
+        glPushMatrix()
+        glTranslatef(self.x, 0.25, self.z)
+        glScalef(0.4, 0.4, 0.4)
+        r, g, b = self.COLORS.get(self.kind, (1, 1, 1))
+        glColor3f(r, g, b)
+        glBegin(GL_QUADS)
+        # Top
+        glVertex3f(-0.5, 0.5, -0.5); glVertex3f(0.5, 0.5, -0.5)
+        glVertex3f(0.5, 0.5, 0.5);   glVertex3f(-0.5, 0.5, 0.5)
+        # Bottom
+        glVertex3f(-0.5,-0.5, -0.5); glVertex3f(0.5,-0.5,-0.5)
+        glVertex3f(0.5,-0.5, 0.5);   glVertex3f(-0.5,-0.5, 0.5)
+        # Sides
+        glVertex3f(-0.5,-0.5,-0.5); glVertex3f(-0.5,0.5,-0.5)
+        glVertex3f(0.5,0.5,-0.5);   glVertex3f(0.5,-0.5,-0.5)
+
+        glVertex3f(-0.5,-0.5,0.5); glVertex3f(-0.5,0.5,0.5)
+        glVertex3f(0.5,0.5,0.5);   glVertex3f(0.5,-0.5,0.5)
+
+        glVertex3f(-0.5,-0.5,-0.5); glVertex3f(-0.5,-0.5,0.5)
+        glVertex3f(-0.5,0.5,0.5);   glVertex3f(-0.5,0.5,-0.5)
+
+        glVertex3f(0.5,-0.5,-0.5); glVertex3f(0.5,-0.5,0.5)
+        glVertex3f(0.5,0.5,0.5);   glVertex3f(0.5,0.5,-0.5)
+        glEnd()
+        glPopMatrix()
+
+# -----------------------
 # Spawner
 # -----------------------
 
@@ -226,7 +269,16 @@ def generate_wave(z_pos):
         elif obj_type == "piedra":
             piedras.append(Piedra(lane, z_pos))
 
-    return conejos, gnomos, piedras
+    # 20% chance de soltar un power-up en un carril libre
+    powerups = []
+    if random.random() < 0.2:
+        libres = set([-2, 0, 2]) - set([o.x for o in conejos + gnomos + piedras])
+        if libres:
+            lane = random.choice(list(libres))
+            kind = random.choice(["heart", "shield"])
+            powerups.append(PowerUp(kind, lane, z_pos))
+
+    return conejos, gnomos, piedras, powerups
 
 # -----------------------
 # Main
@@ -259,7 +311,7 @@ def main_loop():
         gluPerspective(45, (display[0] / display[1]), 0.1, 120.0)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        glTranslatef(0, -1.3, -5)   # un poco más alto que -1.5
+        glTranslatef(0, -1.3, -5)
 
     # Modelos
     grass_model  = load_obj("models/grass.obj")
@@ -326,6 +378,13 @@ def main_loop():
         max_health = 100
         particles = []
         conejos, gnomos, piedras = [], [], []
+        powerups = []
+
+        combo = 0
+        combo_timer = 0          # ms restantes para mantener combo
+        multiplier = 1
+        shield_ms = 0            # tiempo de escudo restante
+        difficulty_timer = 0     # incrementa dificultad cada X ms
 
         next_wave_z = -10
         move_cooldown = 0
@@ -335,6 +394,12 @@ def main_loop():
             dt_ms = clock.tick(60)
             dt_scale = dt_ms / 16.6667
             now = pygame.time.get_ticks()
+
+            # Rampa de dificultad
+            difficulty_timer += dt_ms
+            if difficulty_timer >= 8000:
+                difficulty_timer = 0
+                base_speed = min(base_speed + 0.15, 6.0)
 
             for e in pygame.event.get():
                 if e.type == QUIT:
@@ -396,35 +461,63 @@ def main_loop():
             set_3d_view()
 
             # Spawner
-            if all(c.z > -30 for c in conejos + gnomos + piedras):
-                wc, wg, wp = generate_wave(next_wave_z)
-                conejos += wc
-                gnomos += wg
-                piedras += wp
+            if all(c.z > -30 for c in conejos + gnomos + piedras + powerups):
+                wc, wg, wp, wpu = generate_wave(next_wave_z)
+                conejos += wc; gnomos += wg; piedras += wp; powerups += wpu
                 next_wave_z -= 6
 
             speed = base_speed * dt_scale
+
+            # Timers
+            if combo_timer > 0:
+                combo_timer = max(0, combo_timer - dt_ms)
+                if combo_timer == 0:
+                    combo = 0
+                    multiplier = 1
+            if shield_ms > 0:
+                shield_ms = max(0, shield_ms - dt_ms)
 
             # Actualizar & colisiones
             for c in conejos:
                 c.update(speed)
                 if c.check_collision(player_x):
-                    score += 10
-                    particles.append(Particle(c.x, 0.5, c.z, (1, 0, 0)))
+                    score += 10 * multiplier
+                    combo += 1
+                    combo_timer = 2500
+                    multiplier = 1 + (combo // 5)
+                    particles.append(Particle(c.x, 0.5, c.z, (1, 0.4, 0.4)))
             for g in gnomos:
                 g.update(speed)
                 if g.check_collision(player_x):
                     score -= 5
+                    combo = 0; multiplier = 1; combo_timer = 0
                     particles.append(Particle(g.x, 0.5, g.z, (1, 0.5, 1)))
             for p in piedras:
                 p.update(speed)
                 if p.check_collision(player_x):
-                    health -= 10
-                    particles.append(Particle(p.x, 0.5, p.z, (1, 1, 0)))
+                    if shield_ms > 0:
+                        particles.append(Particle(p.x, 0.5, p.z, (0.4, 0.7, 1.0)))
+                    else:
+                        health -= 10
+                        combo = 0; multiplier = 1; combo_timer = 0
+                        particles.append(Particle(p.x, 0.5, p.z, (1, 1, 0)))
 
+            # Power-ups
+            for pu in powerups:
+                pu.update(speed)
+                if abs(pu.x - player_x) < 0.1 and -1.5 < pu.z < 0.5:
+                    if pu.kind == "heart":
+                        health = min(max_health, health + 20)
+                    elif pu.kind == "shield":
+                        shield_ms = 4000
+                    particles.append(Particle(pu.x, 0.6, pu.z, (0.9, 0.9, 1.0)))
+                    pu.z = 999  # mark for deletion
+
+            # Descartes
             conejos[:] = [c for c in conejos if c.z < 5]
             gnomos[:] = [g for g in gnomos if g.z < 5]
             piedras[:] = [p for p in piedras if p.z < 5]
+            powerups[:] = [pu for pu in powerups if pu.z < 5]
 
             # Suelo texturizado (más grande y un poco elevado)
             glPushMatrix()
@@ -458,6 +551,10 @@ def main_loop():
                 glDisable(GL_TEXTURE_2D)
                 glPopMatrix()
 
+            # Power-ups draw
+            for pu in powerups:
+                pu.draw()
+
             # Otros
             for g in gnomos:
                 g.draw(gnomo_model)
@@ -486,6 +583,29 @@ def main_loop():
             pw, ph = big_font.size(puntos_txt)
             draw_panel(DISPLAY_W - (pw+30) - 20, 560, pw+30, ph+16, alpha=0.25)
             draw_text(DISPLAY_W - (pw) - 28, 570, puntos_txt, big_font)
+
+            # Combo / Multiplicador
+            if multiplier > 1:
+                txt = f"Combo {combo}  x{multiplier}"
+                cw, ch = font.size(txt)
+                draw_panel(20, 530, cw+18, ch+12, alpha=0.25)
+                draw_text(28, 536, txt, font)
+
+            # Barra de escudo
+            if shield_ms > 0:
+                pct = shield_ms / 4000.0
+                w = 200
+                draw_panel(14, 500, w+12, 22, alpha=0.25)
+                _push_2d()
+                glBegin(GL_QUADS)
+                glColor4f(0.2, 0.7, 1.0, 0.95)
+                glVertex2f(20, 505)
+                glVertex2f(20 + w*pct, 505)
+                glVertex2f(20 + w*pct, 520)
+                glVertex2f(20, 520)
+                glEnd()
+                _pop_2d()
+                draw_text(24, 503, "Escudo", font)
 
             if health <= 0:
                 state = "game_over"
